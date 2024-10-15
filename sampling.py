@@ -2,6 +2,8 @@ import os
 import comfy.samplers
 import comfy.sample
 import torch
+
+import execution_context
 from nodes import common_ksampler, CLIPTextEncode
 from comfy.utils import ProgressBar
 from .utils import expand_mask, FONTS_DIR, parse_string_to_list
@@ -265,11 +267,11 @@ class SchedulerSelectHelper:
 
 class LorasForFluxParams:
     @classmethod
-    def INPUT_TYPES(s):
-        optional_loras = ['none'] + folder_paths.get_filename_list("loras")
+    def INPUT_TYPES(s, context: execution_context.ExecutionContext):
+        optional_loras = ['none'] + folder_paths.get_filename_list(context, "loras")
         return {
             "required": {
-                "lora_1": (folder_paths.get_filename_list("loras"), {"tooltip": "The name of the LoRA."}),
+                "lora_1": (folder_paths.get_filename_list(context, "loras"), {"tooltip": "The name of the LoRA."}),
                 "strength_model_1": ("STRING", { "multiline": False, "dynamicPrompts": False, "default": "1.0" }),
             },
             #"optional": {

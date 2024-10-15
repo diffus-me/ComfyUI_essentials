@@ -1,3 +1,4 @@
+import execution_context
 from .utils import max_, min_
 from nodes import MAX_RESOLUTION
 import comfy.utils
@@ -948,23 +949,27 @@ class ImagePosterize:
 # From https://github.com/yoonsikp/pycubelut/blob/master/pycubelut.py (MIT license)
 class ImageApplyLUT:
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(s, context: execution_context.ExecutionContext):
         return {
             "required": {
                 "image": ("IMAGE",),
-                "lut_file": (folder_paths.get_filename_list("luts"),),
+                "lut_file": (folder_paths.get_filename_list(context, "luts"),),
                 "gamma_correction": ("BOOLEAN", { "default": True }),
                 "clip_values": ("BOOLEAN", { "default": True }),
                 "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.1 }),
-            }}
+            },
+            "hidden": {
+                "context": "EXECUTION_CONTEXT"
+            }
+        }
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "execute"
     CATEGORY = "essentials/image processing"
 
     # TODO: check if we can do without numpy
-    def execute(self, image, lut_file, gamma_correction, clip_values, strength):
-        lut_file_path = folder_paths.get_full_path("luts", lut_file)
+    def execute(self, image, lut_file, gamma_correction, clip_values, strength, context: execution_context.ExecutionContext):
+        lut_file_path = folder_paths.get_full_path(context, "luts", lut_file)
         if not lut_file_path or not Path(lut_file_path).exists():
             print(f"Could not find LUT file: {lut_file_path}")
             return (image,)
@@ -1516,8 +1521,8 @@ class ImageRemoveAlpha:
         return (image,)
 
 class ImagePreviewFromLatent(SaveImage):
-    def __init__(self):
-        self.output_dir = folder_paths.get_temp_directory()
+    def __init__(self, context: execution_context.ExecutionContext):
+        self.output_dir = folder_paths.get_temp_directory(context.user_hash)
         self.type = "temp"
         self.prefix_append = "_temp_" + ''.join(random.choice("abcdefghijklmnopqrstupvxyz") for x in range(5))
         self.compress_level = 1
@@ -1534,6 +1539,7 @@ class ImagePreviewFromLatent(SaveImage):
             }, "hidden": {
                 "prompt": "PROMPT",
                 "extra_pnginfo": "EXTRA_PNGINFO",
+                "context": "EXECUTION_CONTEXT",
             },
         }
 
@@ -1542,12 +1548,12 @@ class ImagePreviewFromLatent(SaveImage):
     FUNCTION = "execute"
     CATEGORY = "essentials/image utils"
 
-    def execute(self, latent, vae, tile_size, prompt=None, extra_pnginfo=None, image=None, filename_prefix="ComfyUI"):
+    def execute(self, latent, vae, tile_size, image=None, prompt=None, extra_pnginfo=None, context: execution_context.ExecutionContext=None):
         mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
         ui = None
 
         if image.startswith("clipspace"):
-            image_path = folder_paths.get_annotated_filepath(image)
+            image_path = folder_paths.get_annotated_filepath(image, context.user_hash)
             if not os.path.exists(image_path):
                 raise ValueError(f"Clipspace image does not exist anymore, select 'none' in the image field.")
 
