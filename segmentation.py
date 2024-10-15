@@ -1,6 +1,10 @@
+import os
+
 import torch
 import torchvision.transforms.v2 as T
 import torch.nn.functional as F
+
+import folder_paths
 from .utils import expand_mask
 
 class LoadCLIPSegModels:
@@ -16,9 +20,10 @@ class LoadCLIPSegModels:
 
     def execute(self):
         from transformers import CLIPSegProcessor, CLIPSegForImageSegmentation
-        processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
-        model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
-
+        base_path = folder_paths.get_folder_paths("clipseg")
+        model_path = os.path.join(base_path[0], "clipseg-rd64-refined")
+        processor = CLIPSegProcessor.from_pretrained(model_path)
+        model = CLIPSegForImageSegmentation.from_pretrained(model_path)
         return ((processor, model),)
 
 class ApplyCLIPSeg:

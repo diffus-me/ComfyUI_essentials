@@ -2,6 +2,8 @@ import os
 import comfy.samplers
 import comfy.sample
 import torch
+
+import execution_context
 from nodes import common_ksampler, CLIPTextEncode
 from comfy.utils import ProgressBar
 from .utils import expand_mask, FONTS_DIR, parse_string_to_list
@@ -48,7 +50,11 @@ class KSamplerVariationsWithNoise:
                     #"return_with_leftover_noise": (["disable", "enable"], ),
                     "variation_seed": ("INT:seed", {"default": 12345, "min": 0, "max": 0xffffffffffffffff}),
                     "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step":0.01, "round": 0.01}),
-                }}
+                },
+            "hidden": {
+                "context": "EXECUTION_CONTEXT",
+            }
+        }
 
     RETURN_TYPES = ("LATENT",)
     FUNCTION = "execute"
@@ -61,7 +67,7 @@ class KSamplerVariationsWithNoise:
             mask = mask.repeat((shape[0] -1) // mask.shape[0] + 1, 1, 1, 1)[:shape[0]]
         return mask
 
-    def execute(self, model, latent_image, main_seed, steps, cfg, sampler_name, scheduler, positive, negative, variation_strength, variation_seed, denoise):
+    def execute(self, model, latent_image, main_seed, steps, cfg, sampler_name, scheduler, positive, negative, variation_strength, variation_seed, denoise, context:execution_context.ExecutionContext=None):
         if main_seed == variation_seed:
             variation_seed += 1
 
@@ -101,7 +107,7 @@ class KSamplerVariationsWithNoise:
             work_latent["samples"] = noise_mask * work_latent["samples"] + (1-noise_mask) * latent_image["samples"]
             work_latent['noise_mask'] = expand_mask(latent_image["noise_mask"].clone(), 5, True)
 
-        return common_ksampler(model, main_seed, steps, cfg, sampler_name, scheduler, positive, negative, work_latent, denoise=1.0, disable_noise=disable_noise, start_step=start_at_step, last_step=end_at_step, force_full_denoise=force_full_denoise)
+        return common_ksampler(context, model, main_seed, steps, cfg, sampler_name, scheduler, positive, negative, work_latent, denoise=1.0, disable_noise=disable_noise, start_step=start_at_step, last_step=end_at_step, force_full_denoise=force_full_denoise)
 
 
 class KSamplerVariationsStochastic:
@@ -121,13 +127,17 @@ class KSamplerVariationsStochastic:
                     "variation_strength": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 1.0, "step":0.05, "round": 0.01}),
                     #"variation_sampler": (comfy.samplers.KSampler.SAMPLERS, ),
                     "cfg_scale": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step":0.05, "round": 0.01}),
-                }}
+                },
+            "hidden": {
+                "context": "EXECUTION_CONTEXT",
+            }
+        }
 
     RETURN_TYPES = ("LATENT", )
     FUNCTION = "execute"
     CATEGORY = "essentials/sampling"
 
-    def execute(self, model, latent_image, noise_seed, steps, cfg, sampler, scheduler, positive, negative, variation_seed, variation_strength, cfg_scale, variation_sampler="dpmpp_2m_sde"):
+    def execute(self, model, latent_image, noise_seed, steps, cfg, sampler, scheduler, positive, negative, variation_seed, variation_strength, cfg_scale, variation_sampler="dpmpp_2m_sde", context: execution_context.ExecutionContext=None):
         # Stage 1: composition sampler
         force_full_denoise = False # return with leftover noise = "enable"
         disable_noise = False # add noise = "enable"
@@ -139,7 +149,7 @@ class KSamplerVariationsStochastic:
         batch_size = work_latent["samples"].shape[0]
         work_latent["samples"] = work_latent["samples"][0].unsqueeze(0)
 
-        stage1 = common_ksampler(model, noise_seed, steps, cfg, sampler, scheduler, positive, negative, work_latent, denoise=1.0, disable_noise=disable_noise, start_step=start_at_step, last_step=end_at_step, force_full_denoise=force_full_denoise)[0]
+        stage1 = common_ksampler(context, model, noise_seed, steps, cfg, sampler, scheduler, positive, negative, work_latent, denoise=1.0, disable_noise=disable_noise, start_step=start_at_step, last_step=end_at_step, force_full_denoise=force_full_denoise)[0]
 
         if batch_size > 1:
             stage1["samples"] = stage1["samples"].clone().repeat(batch_size, 1, 1, 1)
@@ -151,7 +161,7 @@ class KSamplerVariationsStochastic:
         start_at_step = end_at_step
         end_at_step = steps
 
-        return common_ksampler(model, variation_seed, steps, cfg, variation_sampler, scheduler, positive, negative, stage1, denoise=1.0, disable_noise=disable_noise, start_step=start_at_step, last_step=end_at_step, force_full_denoise=force_full_denoise)
+        return common_ksampler(context, model, variation_seed, steps, cfg, variation_sampler, scheduler, positive, negative, stage1, denoise=1.0, disable_noise=disable_noise, start_step=start_at_step, last_step=end_at_step, force_full_denoise=force_full_denoise)
 
 class InjectLatentNoise:
     @classmethod
@@ -265,11 +275,11 @@ class SchedulerSelectHelper:
 
 class LorasForFluxParams:
     @classmethod
-    def INPUT_TYPES(s):
-        optional_loras = ['none'] + folder_paths.get_filename_list("loras")
+    def INPUT_TYPES(s, context: execution_context.ExecutionContext):
+        optional_loras = ['none'] + folder_paths.get_filename_list(context, "loras")
         return {
             "required": {
-                "lora_1": (folder_paths.get_filename_list("loras"), {"tooltip": "The name of the LoRA."}),
+                "lora_1": (folder_paths.get_filename_list(context, "loras"), {"tooltip": "The name of the LoRA."}),
                 "strength_model_1": ("STRING", { "multiline": False, "dynamicPrompts": False, "default": "1.0" }),
             },
             #"optional": {
